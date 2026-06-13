@@ -14,14 +14,6 @@ pyjwt
 
 pg8000
 
-# AI / ML
-transformers>=4.38.0
-torch>=2.0.0
-sentencepiece
-accelerate
-
 # Encryption
 cryptography>=42.0.0
 
-# Utilities
-numpy

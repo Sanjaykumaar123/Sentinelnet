@@ -1,0 +1,9 @@
+# Local AI / ML requirements for SentinelNet (Transformer mode)
+# Install these separately to run the full RoBERTa threat detection models locally.
+# Excluded from the main requirements.txt to fit within Vercel's 500MB serverless limit.
+
+transformers>=4.38.0
+torch>=2.0.0
+sentencepiece
+accelerate
+numpy

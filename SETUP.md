@@ -33,3 +33,21 @@ To switch to a production PostgreSQL database:
 2. Update the `DATABASE_URL` with your connection string:
    `postgresql://user:password@localhost:5432/sentinelnet`
 3. Restart the backend.
+
+## 🧠 Running in Full AI/ML Transformer Mode (Local)
+By default, the production deployment on serverless hosts (like Vercel) runs in **Enhanced Heuristics Mode** to comply with Vercel's 500MB function size limit (PyTorch + Hugging Face libraries exceed 4.7 GB).
+
+To enable the full **RoBERTa-base AI Transformer Threat Model** locally:
+1. Activate your virtual environment:
+   ```bash
+   # On Windows:
+   venv\Scripts\activate
+   # On macOS/Linux:
+   source venv/bin/activate
+   ```
+2. Install the additional ML packages:
+   ```bash
+   pip install -r requirements-ml.txt
+   ```
+3. Restart the backend. The startup logs will confirm: `✓ AI detection model loaded: roberta-base-openai-detector` and the dashboard will display **⚡ TRANSFORMER AI ACTIVE**.
+
