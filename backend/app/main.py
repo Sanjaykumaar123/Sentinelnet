@@ -1,8 +1,7 @@
 import sys
 import os
 
-# Fix Vercel Import Path: Add 'backend' directory to sys.path
-# This ensures 'from app...' imports work correctly in serverless environment
+# Fix Vercel Import Path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastapi import FastAPI, Request
@@ -12,61 +11,63 @@ import traceback
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.endpoints import router as api_router
 from app.db.session import SessionLocal, engine, DB_CONNECTION_ERROR
-# Explicit imports of Base and Models triggers registration in Base.metadata
 from app.db.base import Base
 from app.models.user import User
 from app.models.message import Message
 from app.core import security
 from sqlalchemy import text
 
-
-
-# ... (Previous imports remain same)
-
 from contextlib import asynccontextmanager
 
-# Define lifespan manager for startup and shutdown logic
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup logic
+    # ── Startup ────────────────────────────────────────────────────────────
     try:
-        # Debug connection
-        print(f"DATABASE CONNECTING TO: {str(engine.url).replace(str(engine.url).split('@')[0], '****') if '@' in str(engine.url) else str(engine.url)[:20]}...")
+        print(f"DATABASE CONNECTING TO: {str(engine.url)[:20]}...")
 
-        # Create tables on startup
-        # WRAPPED IN TRY/EXCEPT TO PREVENT CRASH ON VERCEL IF DB CONNECTION FAILS
         try:
             Base.metadata.create_all(bind=engine)
-            
-            # Auto-Migrate Old Vercel/Neon DBs
-            try:
-                with engine.connect() as conn:
-                    columns_to_add = [
-                        ("file_url", "VARCHAR"),
-                        ("file_type", "VARCHAR"),
-                        ("file_size", "VARCHAR"),
-                        ("integrity_hash", "VARCHAR"),
-                        ("channel_id", "VARCHAR"),
-                        ("expiration", "TIMESTAMP"),
-                        ("receiver_id", "INTEGER"),
-                        ("reply_to_id", "INTEGER"),
-                        ("is_deleted", "BOOLEAN DEFAULT FALSE"),
-                        ("ai_score", "FLOAT"),
-                        ("opsec_risk", "VARCHAR"),
-                        ("phishing_risk", "VARCHAR"),
-                        ("is_blocked", "BOOLEAN DEFAULT FALSE")
-                    ]
-                    for col_name, col_type in columns_to_add:
-                        try:
-                            # Postgres supports IF NOT EXISTS
-                            conn.execute(text(f"ALTER TABLE messages ADD COLUMN IF NOT EXISTS {col_name} {col_type}"))
-                        except Exception:
-                            pass
-                    conn.commit()
-            except Exception as mig_err:
-                print(f"Migration soft-fail: {mig_err}")
-            
-            # Create Default User for Vercel Demo
+
+            # Auto-migrate existing DBs with new columns
+            new_columns = [
+                ("file_url", "VARCHAR"),
+                ("file_type", "VARCHAR"),
+                ("file_size", "VARCHAR"),
+                ("integrity_hash", "VARCHAR"),
+                ("channel_id", "VARCHAR"),
+                ("expiration", "TIMESTAMP"),
+                ("receiver_id", "INTEGER"),
+                ("reply_to_id", "INTEGER"),
+                ("is_deleted", "BOOLEAN DEFAULT FALSE"),
+                ("ai_score", "FLOAT"),
+                ("opsec_risk", "VARCHAR"),
+                ("phishing_risk", "VARCHAR"),
+                ("is_blocked", "BOOLEAN DEFAULT FALSE"),
+                # New: extended threat + encryption columns
+                ("encryption_version", "VARCHAR"),
+                ("severity", "VARCHAR"),
+                ("threat_confidence", "FLOAT"),
+                ("model_version", "VARCHAR"),
+                ("context_risk", "VARCHAR"),
+                ("threat_reasons", "TEXT"),
+                ("opsec_score", "FLOAT"),
+                ("phishing_confidence", "FLOAT"),
+                ("ai_method", "VARCHAR"),
+                ("nonce", "VARCHAR"),
+                ("audit_log", "TEXT"),
+            ]
+            with engine.connect() as conn:
+                for col_name, col_type in new_columns:
+                    try:
+                        conn.execute(
+                            text(f"ALTER TABLE messages ADD COLUMN IF NOT EXISTS {col_name} {col_type}")
+                        )
+                    except Exception:
+                        pass
+                conn.commit()
+
+            # Create default admin user
             db = SessionLocal()
             try:
                 if not db.query(User).filter(User.email == "admin@sentinel.net").first():
@@ -83,19 +84,33 @@ async def lifespan(app: FastAPI):
                 print(f"Error creating default user: {e}")
             finally:
                 db.close()
-                
+
         except Exception as db_exc:
             print(f"CRITICAL DATABASE ERROR: {db_exc}")
-            # Do NOT raise, so the app still starts and we can see /health
-            
+
+        # ── Initialize AI Threat Engine (non-blocking, background thread) ──
+        try:
+            from app.services.threat_intel import initialize_threat_engine
+            import asyncio
+            asyncio.ensure_future(initialize_threat_engine())
+            print("[OK] Threat engine initialization started in background")
+        except Exception as te:
+            print(f"Threat engine startup soft-fail: {te}")
+
     except Exception as e:
-        print(f"Startup Error - General: {e}")
+        print(f"Startup Error: {e}")
 
     yield
-    # Shutdown logic (if any)
+    # Shutdown
 
 
-app = FastAPI(title="SentinelNet API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(
+    title="SentinelNet API",
+    version="2.0.0",
+    description="AI-Powered Secure Communication Platform",
+    lifespan=lifespan
+)
+
 
 @app.exception_handler(Exception)
 async def debug_exception_handler(request: Request, exc: Exception):
@@ -104,9 +119,7 @@ async def debug_exception_handler(request: Request, exc: Exception):
         content={"detail": f"Server Error: {str(exc)} Trace: {traceback.format_exc()}"},
     )
 
-# Configure CORS for Vercel
-# Allowing "*" with allow_credentials=False prevents protocol errors
-# We use Bearer auth (headers), so cookies/credentials aren't strictly needed for this demo
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -117,17 +130,22 @@ app.add_middleware(
 
 app.include_router(api_router, prefix="/api/v1")
 
+
 @app.get("/")
 def read_root():
+    from app.services.threat_intel import get_model_status
     return {
-        "message": "SentinelNet Secure Gateway Active",
-        "env": "Vercel",
+        "message": "SentinelNet Secure Gateway Active — AI-Powered v2.0",
+        "env": "production",
         "tables": list(Base.metadata.tables.keys()),
-        "db_url_masked": str(engine.url)[:15] + "..."
+        "db_url_masked": str(engine.url)[:15] + "...",
+        "threat_engine": get_model_status(),
     }
+
 
 @app.get("/api/health")
 def health_check():
+    from app.services.threat_intel import get_model_status
     db = SessionLocal()
     user_count = 0
     first_user = "None"
@@ -148,16 +166,15 @@ def health_check():
         "user_count": user_count,
         "first_user_email": first_user,
         "tables": list(Base.metadata.tables.keys()),
-        "db_url_masked": str(engine.url)[:15] + "...", # Security: Don't explicitly show full creds
-        "db_connection_error": str(DB_CONNECTION_ERROR) if DB_CONNECTION_ERROR else None
+        "db_url_masked": str(engine.url)[:15] + "...",
+        "db_connection_error": str(DB_CONNECTION_ERROR) if DB_CONNECTION_ERROR else None,
+        "threat_engine": get_model_status(),
     }
+
 
 @app.get("/api/debug/users")
 def debug_users():
-    """
-    TEMPORARY DEBUG ENDPOINT
-    List all users to verify registration persistence.
-    """
+    """List all users (debug only)."""
     db = SessionLocal()
     try:
         users = db.query(User).all()
@@ -165,10 +182,9 @@ def debug_users():
             {
                 "id": u.id,
                 "email": u.email,
-                "created_at": "Unknown", # Add timestamp to model later if needed
+                "created_at": "Unknown",
                 "role": u.role,
                 "is_active": u.is_active,
-                # "hashed_password": u.hashed_password[:10] + "..." # truncated
             }
             for u in users
         ]

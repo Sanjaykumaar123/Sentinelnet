@@ -13,6 +13,15 @@ type RiskResult = {
     opsec_risk: "SAFE" | "SENSITIVE" | "HIGH";
     phishing_risk: "LOW" | "MODERATE" | "HIGH";
     explanation: string;
+    // Extended AI fields
+    severity?: "LOW" | "MEDIUM" | "HIGH";
+    confidence?: number;
+    reasons?: string[];
+    model_version?: string;
+    context_risk?: "SAFE" | "SENSITIVE" | "HIGH";
+    opsec_score?: number;
+    phishing_confidence?: number;
+    ai_method?: "transformer" | "heuristic";
 }
 
 type Message = {
@@ -999,15 +1008,60 @@ export function ChatInterface() {
                                     {/* Real-time AI Metrics */}
                                     {(() => {
                                         const currentMsg = selectedMessage || messages[messages.length - 1];
+                                        const severity = currentMsg?.risk?.severity || 'LOW';
+                                        const confidence = currentMsg?.risk?.confidence || 0;
+                                        const isTransformer = currentMsg?.risk?.ai_method === 'transformer';
                                         return (
                                             <div className="space-y-4 mb-6">
+                                                {/* Overall Severity */}
+                                                <div className={clsx(
+                                                    "rounded-lg p-4 border",
+                                                    severity === 'HIGH' ? 'bg-red-950/30 border-red-500/30' :
+                                                    severity === 'MEDIUM' ? 'bg-orange-950/30 border-orange-500/30' :
+                                                    'bg-emerald-950/20 border-emerald-500/20'
+                                                )}>
+                                                    <div className="text-xs text-slate-400 mb-1">UNIFIED THREAT SEVERITY</div>
+                                                    <div className="flex items-center justify-between">
+                                                        <span className={clsx(
+                                                            'text-2xl font-black tracking-wider',
+                                                            severity === 'HIGH' ? 'text-red-400' :
+                                                            severity === 'MEDIUM' ? 'text-orange-400' :
+                                                            'text-emerald-400'
+                                                        )}>{severity}</span>
+                                                        <div className="text-right">
+                                                            <div className="text-xs text-slate-500">Confidence</div>
+                                                            <div className="text-xl font-bold text-white">{confidence}%</div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="mt-2 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                                                        <div
+                                                            className={clsx(
+                                                                'h-full transition-all duration-700 rounded-full',
+                                                                severity === 'HIGH' ? 'bg-gradient-to-r from-red-600 to-rose-400' :
+                                                                severity === 'MEDIUM' ? 'bg-gradient-to-r from-orange-500 to-amber-400' :
+                                                                'bg-gradient-to-r from-emerald-600 to-teal-400'
+                                                            )}
+                                                            style={{ width: `${confidence}%` }}
+                                                        />
+                                                    </div>
+                                                    <div className="mt-2 text-[10px] text-slate-500 flex items-center gap-1">
+                                                        {isTransformer ? (
+                                                            <><span className="text-purple-400">⚡ TRANSFORMER</span> inference active</>
+                                                        ) : (
+                                                            <><span className="text-yellow-400">⚙ HEURISTIC</span> fallback mode</>
+                                                        )}
+                                                    </div>
+                                                </div>
+
                                                 <div className="bg-slate-800/50 border border-purple-500/20 rounded-lg p-4">
                                                     <div className="text-xs text-slate-400 mb-2">AI-GENERATED CONTENT SCORE</div>
                                                     <div className="flex items-end gap-2">
                                                         <span className="text-3xl font-bold text-purple-400">
                                                             {currentMsg?.risk?.ai_score?.toFixed(1) || '0.0'}%
                                                         </span>
-                                                        <span className="text-xs text-slate-500 mb-1">confidence</span>
+                                                        <span className="text-xs text-slate-500 mb-1">
+                                                            {isTransformer ? 'transformer confidence' : 'heuristic estimate'}
+                                                        </span>
                                                     </div>
                                                     <div className="mt-2 h-2 bg-slate-700 rounded-full overflow-hidden">
                                                         <div
@@ -1028,23 +1082,26 @@ export function ChatInterface() {
                                                         )}>
                                                             {currentMsg?.risk?.opsec_risk || 'SAFE'}
                                                         </span>
-                                                        <div className={clsx(
-                                                            "px-3 py-1 rounded-full text-xs font-bold",
-                                                            currentMsg?.risk?.opsec_risk === 'HIGH' ? 'bg-red-500/20 text-red-400' :
-                                                                currentMsg?.risk?.opsec_risk === 'SENSITIVE' ? 'bg-orange-500/20 text-orange-400' :
-                                                                    'bg-emerald-500/20 text-emerald-400'
-                                                        )}>
-                                                            {currentMsg?.risk?.opsec_risk === 'HIGH' ? 'BLOCK' : 'ALLOW'}
+                                                        <div className="text-right">
+                                                            <div className={clsx(
+                                                                "px-3 py-1 rounded-full text-xs font-bold",
+                                                                currentMsg?.risk?.opsec_risk === 'HIGH' ? 'bg-red-500/20 text-red-400' :
+                                                                    currentMsg?.risk?.opsec_risk === 'SENSITIVE' ? 'bg-orange-500/20 text-orange-400' :
+                                                                        'bg-emerald-500/20 text-emerald-400'
+                                                            )}>
+                                                                {currentMsg?.risk?.opsec_risk === 'HIGH' ? 'BLOCK' : 'ALLOW'}
+                                                            </div>
+                                                            <div className="text-[10px] text-slate-500 mt-1">Score: {currentMsg?.risk?.opsec_score || 0}</div>
                                                         </div>
                                                     </div>
                                                     <div className="text-xs text-slate-500 mt-2">
-                                                        Neural network classification
+                                                        Hybrid regex + zero-shot NLI classifier
                                                     </div>
                                                 </div>
 
                                                 <div className="bg-slate-800/50 border border-yellow-500/20 rounded-lg p-4">
                                                     <div className="text-xs text-slate-400 mb-2">PHISHING RISK PROBABILITY</div>
-                                                    <div className="flex items-end gap-2">
+                                                    <div className="flex items-center justify-between">
                                                         <span className={clsx(
                                                             "text-3xl font-bold",
                                                             currentMsg?.risk?.phishing_risk === 'HIGH' ? 'text-red-400' :
@@ -1053,9 +1110,12 @@ export function ChatInterface() {
                                                         )}>
                                                             {currentMsg?.risk?.phishing_risk || 'LOW'}
                                                         </span>
+                                                        <span className="text-lg font-bold text-slate-400">
+                                                            {currentMsg?.risk?.phishing_confidence || 0}%
+                                                        </span>
                                                     </div>
                                                     <div className="text-xs text-slate-500 mt-2">
-                                                        Transformer-based detection
+                                                        URL features + social engineering + zero-shot NLI
                                                     </div>
                                                 </div>
                                             </div>
@@ -1117,26 +1177,89 @@ export function ChatInterface() {
                                                 <span>Alert Clusters ({messages.filter(m => m.risk?.opsec_risk === 'HIGH').length} detected)</span>
                                             </div>
                                         </div>
-                                    </div>
+                                                           {/* Reasons / Explainability */}
+                                    {(() => {
+                                        const currentMsg = selectedMessage || messages[messages.length - 1];
+                                        const reasons = currentMsg?.risk?.reasons || [];
+                                        if (reasons.length === 0) return null;
+                                        return (
+                                            <div className="mt-4 p-4 bg-slate-800/30 border border-slate-700 rounded-lg">
+                                                <div className="text-xs font-bold text-slate-400 mb-2 flex items-center gap-2">
+                                                    <Brain className="w-3.5 h-3.5 text-purple-400" />
+                                                    THREAT INDICATORS
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    {reasons.slice(0, 5).map((r, i) => (
+                                                        <div key={i} className="flex items-start gap-2 text-[10px] text-orange-300">
+                                                            <AlertTriangle className="w-3 h-3 mt-0.5 text-orange-400 shrink-0" />
+                                                            <span>{r}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
+
+                                    {/* Context Risk */}
+                                    {(() => {
+                                        const currentMsg = selectedMessage || messages[messages.length - 1];
+                                        const contextRisk = currentMsg?.risk?.context_risk;
+                                        if (!contextRisk || contextRisk === 'SAFE') return null;
+                                        return (
+                                            <div className="mt-4 p-4 bg-amber-950/30 border border-amber-500/30 rounded-lg">
+                                                <div className="text-xs font-bold text-amber-400 mb-2 flex items-center gap-2">
+                                                    <Network className="w-3.5 h-3.5" />
+                                                    CONTEXT LEAKAGE ALERT
+                                                </div>
+                                                <div className="text-[10px] text-amber-300">
+                                                    Cross-message OPSEC pattern detected. Risk escalated from conversation context analysis.
+                                                </div>
+                                                <div className={clsx(
+                                                    "mt-2 text-xs font-bold",
+                                                    contextRisk === 'HIGH' ? 'text-red-400' : 'text-orange-400'
+                                                )}>
+                                                    CONTEXT: {contextRisk}
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
 
                                     {/* Model Info */}
-                                    <div className="mt-6 p-4 bg-slate-800/30 border border-slate-700 rounded-lg">
-                                        <div className="text-xs font-bold text-slate-400 mb-2">ACTIVE MODELS</div>
-                                        <div className="space-y-2 text-[10px] text-slate-500">
-                                            <div className="flex items-center justify-between">
-                                                <span>GPT-4 Content Classifier</span>
-                                                <span className="text-emerald-400">●</span>
-                                            </div>
-                                            <div className="flex items-center justify-between">
-                                                <span>BERT Phishing Detector</span>
-                                                <span className="text-emerald-400">●</span>
-                                            </div>
-                                            <div className="flex items-center justify-between">
-                                                <span>Custom OPSEC Neural Net</span>
-                                                <span className="text-emerald-400">●</span>
-                                            </div>
+                                    <div className="mt-4 p-4 bg-slate-800/30 border border-slate-700 rounded-lg">
+                                        <div className="text-xs font-bold text-slate-400 mb-2">ACTIVE THREAT ENGINE</div>
+                                        <div className="space-y-2 text-[10px]">
+                                            {(() => {
+                                                const currentMsg = selectedMessage || messages[messages.length - 1];
+                                                const version = currentMsg?.risk?.model_version || 'heuristic';
+                                                const method = currentMsg?.risk?.ai_method || 'heuristic';
+                                                const isTransformer = method === 'transformer';
+                                                return (<>
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-slate-400">AI Content Detector</span>
+                                                        <span className={isTransformer ? 'text-emerald-400' : 'text-yellow-400'}>
+                                                            {isTransformer ? '● TRANSFORMER' : '● HEURISTIC'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-slate-400">OPSEC Classifier</span>
+                                                        <span className="text-emerald-400">● HYBRID</span>
+                                                    </div>
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-slate-400">Phishing Detector</span>
+                                                        <span className="text-emerald-400">● ZERO-SHOT NLI</span>
+                                                    </div>
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-slate-400">Context Tracker</span>
+                                                        <span className="text-teal-400">● ACTIVE</span>
+                                                    </div>
+                                                    <div className="mt-2 pt-2 border-t border-slate-700 flex items-center justify-between">
+                                                        <span className="text-slate-500">Model</span>
+                                                        <span className="text-purple-400 font-mono text-[9px]">{version}</span>
+                                                    </div>
+                                                </>);
+                                            })()}
                                         </div>
-                                    </div>
+                                    </div>                       </div>
                                 </div>
                             </motion.div>
                         )}
